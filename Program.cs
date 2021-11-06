@@ -1,4 +1,8 @@
+using Microsoft.Azure.Cosmos;
+using Azure.Identity;
 using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.Resource;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,22 +17,43 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+var tokenCredential = new ChainedTokenCredential
+(
+    new AzureCliCredential(),
+    new ManagedIdentityCredential()
+);
 
-app.MapGet("/volcanos/{name?}", async (string? name) => {
+var endpointUrl = "https://cm-cosmos-demo.documents.azure.com";
+CosmosClient cosmosClient = new CosmosClient(endpointUrl, tokenCredential);
+
+app.MapGet("/volcanos/{name?}", async Task<List<Volcano>> (string? name, HttpContext context) => {
+    context.VerifyUserHasAnyAcceptedScope(new string[] { "access_as_user" });
     if (name is null)
     {
-        return $"Hello, World!. You're getting ALL the volcanos";
+        return await GetVolcanos();
     }
     else
     {
-        return $"Hello,You'll get data for Volcano: {name}!";
-
+        return new List<Volcano> { await GetVolcano(name)};
     }
 }).RequireAuthorization();
 
-app.MapPost("/volcano", (Volcano volcano) => {
-    return $"Hello, this call will create a new volcano: {volcano.VolcanoName}!";
-});//.RequireAuthorization();
+app.MapPost("/volcano", async Task<IActionResult> (Volcano volcano, HttpContext context) => {
+    context.VerifyUserHasAnyAcceptedScope(new string[] { "access_as_user" });
+    
+    var result =  await CreateVolcano(volcano);
+    if (result.StatusCode == System.Net.HttpStatusCode.Created)
+    {
+        return new JsonResult(volcano);
+    }
+    else if( result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+    {
+        return new ForbidResult("You don't have the right permissions to create new Volcanos");
+    }
+    
+    return new ObjectResult("nothing happened");
+    
+}).RequireAuthorization();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -47,21 +72,79 @@ app.MapControllers();
 
 app.Run();
 
-class Location
+
+async Task<List<Volcano>> GetVolcanos()
+{
+    QueryRequestOptions options = new QueryRequestOptions() { MaxBufferedItemCount = 100 };
+    var volcanos = new List<Volcano>();
+    var database = cosmosClient.GetDatabase("VolcanoList");
+    var container = database.GetContainer("Volcano");
+    var queryText = "SELECT * FROM Volcano";
+    using (FeedIterator<Volcano> query = container.GetItemQueryIterator<Volcano>(
+        queryText,
+        requestOptions: options))
+    {
+        while (query.HasMoreResults)
+        {
+            foreach (var volcano in await query.ReadNextAsync())
+            {
+                volcanos.Add(volcano);
+            }
+        }
+    }
+
+    return volcanos;
+}
+
+async Task<Volcano> GetVolcano(string name)
+{
+    QueryDefinition query = new QueryDefinition(
+        "SELECT * FROM Volcano s WHERE s.VolcanoName = @volcanoName")
+        .WithParameter("@volcanoName",name);
+    var database = cosmosClient.GetDatabase("VolcanoList");
+    var container = database.GetContainer("Volcano");
+    var volcanos = new List<Volcano>();
+    using (FeedIterator<Volcano> resultSet = container.GetItemQueryIterator<Volcano>(query))
+    {
+        while (resultSet.HasMoreResults)
+        {
+            FeedResponse<Volcano> response = await resultSet.ReadNextAsync();
+            volcanos.AddRange(response);
+        }
+    }
+    return volcanos.FirstOrDefault();
+}
+
+async Task<ItemResponse<Volcano>> CreateVolcano(Volcano volcano)
+{
+    var database = cosmosClient.GetDatabase("VolcanoList");
+    var container = database.GetContainer("Volcano");
+    var response = await container.UpsertItemAsync<Volcano>(volcano, new PartitionKey(Guid.NewGuid().ToString()));
+    return response;
+}
+
+public class Location
 {
     public string? type { get; set; }
     public List<double>? coordinates { get; set; }
 }
 
-class Volcano
+public class Volcano
 {
     public string? VolcanoName { get; set; }
     public string? Country { get; set; }
     public string? Region { get; set; }
     public Location? Location { get; set; }
-    public int Elevation { get; set; }
+    public int? Elevation { get; set; }
     public string? Type { get; set; }
     public string? Status { get; set; }
     public string? LastKnownEruption { get; set; }
     public string? id { get; set; }
+    public string? _rid { get; set; }
+    public string? _self { get; set; }
+    public string? _etag { get; set; }
+    public string? _attachments { get; set; }
+    public int _ts { get; set; }
 }
+
+

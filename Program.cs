@@ -1,4 +1,5 @@
 using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.Resource;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,22 +14,24 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-
-app.MapGet("/volcanos/{name?}", async (string? name) => {
+app.MapGet("/volcanos/{name?}", Task<string>(string? name, HttpContext context) => {
+    context.VerifyUserHasAnyAcceptedScope(new string[] { "access_as_user" });
     if (name is null)
     {
-        return $"Hello, World!. You're getting ALL the volcanos";
+        return Task.FromResult("You're getting ALL the volcanos");
     }
     else
     {
-        return $"Hello,You'll get data for Volcano: {name}!";
-
+        return Task.FromResult($"You're getting results for volcanos: {name}");
     }
 }).RequireAuthorization();
 
-app.MapPost("/volcano", (Volcano volcano) => {
-    return $"Hello, this call will create a new volcano: {volcano.VolcanoName}!";
-});//.RequireAuthorization();
+app.MapPost("/volcano", ( HttpContext context) => {
+    context.VerifyUserHasAnyAcceptedScope(new string[] { "access_as_user" });
+    
+    return "About to create a Volcano";
+    
+}).RequireAuthorization();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -39,29 +42,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
-
-class Location
-{
-    public string? type { get; set; }
-    public List<double>? coordinates { get; set; }
-}
-
-class Volcano
-{
-    public string? VolcanoName { get; set; }
-    public string? Country { get; set; }
-    public string? Region { get; set; }
-    public Location? Location { get; set; }
-    public int Elevation { get; set; }
-    public string? Type { get; set; }
-    public string? Status { get; set; }
-    public string? LastKnownEruption { get; set; }
-    public string? id { get; set; }
-}

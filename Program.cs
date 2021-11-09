@@ -119,7 +119,9 @@ async Task<ItemResponse<Volcano>> CreateVolcano(Volcano volcano)
 {
     var database = cosmosClient.GetDatabase("VolcanoList");
     var container = database.GetContainer("Volcano");
-    var response = await container.UpsertItemAsync<Volcano>(volcano, new PartitionKey(Guid.NewGuid().ToString()));
+    var response = await container.UpsertItemAsync<Volcano>(
+        volcano, 
+        new PartitionKey(Guid.NewGuid().ToString()));
     return response;
 }
 

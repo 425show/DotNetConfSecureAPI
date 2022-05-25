@@ -38,21 +38,25 @@ app.MapGet("/volcanos/{name?}", async Task<List<Volcano>> (string? name, HttpCon
     }
 }).RequireAuthorization();
 
-app.MapPost("/volcano", async Task<IActionResult> (Volcano volcano, HttpContext context) => {
+app.MapPost("/volcano", async Task<IResult> (Volcano volcano, HttpContext context) => {
     context.VerifyUserHasAnyAcceptedScope(new string[] { "access_as_user" });
     
-    var result =  await CreateVolcano(volcano);
-    if (result.StatusCode == System.Net.HttpStatusCode.Created)
+    try
     {
-        return new JsonResult(volcano);
+        await CreateVolcano(volcano);
+        return Results.Ok();
     }
-    else if( result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+    catch(CosmosException ex)
     {
-        return new ForbidResult("You don't have the right permissions to create new Volcanos");
+        if (ex.StatusCode is System.Net.HttpStatusCode.Forbidden)
+        {
+            return Results.Forbid();
+        }
+        else
+        {
+            return Results.BadRequest();
+        }
     }
-    
-    return new ObjectResult("nothing happened");
-    
 }).RequireAuthorization();
 
 // Configure the HTTP request pipeline.

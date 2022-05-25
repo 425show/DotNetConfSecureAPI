@@ -35,6 +35,14 @@ az cosmosdb sql role assignment create \
 --scope "/" --principal-id $principalId \
 --role-definition-id $readOnlyRoleDefinitionId
 
+# Assign the built-in read-only role
+az cosmosdb sql role assignment create `
+--account-name $accountName `
+--resource-group $resourceGroupName `
+--scope "/" --principal-id $principalId `
+--role-definition-id /subscriptions/e42acc2d-8462-4fb5-bf0d-d983c0017584/resourceGroups/identity/providers/Microsoft.DocumentDB/databaseAccounts/cm-cosmos-demo/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001
+
+
 # On the local dev environment, sign in to the Azure CLI using the service principal
 az login --service-principal \
 -u <clientId> \
